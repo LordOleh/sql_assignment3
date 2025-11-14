@@ -77,7 +77,7 @@ VALUES
 (NULL, 20011, TIMESTAMP '2024-10-07 18:00:00', 'Deposit', 'Reversed', 1000.00, 0.00),
 (30018, 20013, TIMESTAMP '2024-10-04 17:00:00', 'Deposit', 'Completed', 250000.00, 0.00);
 
---------
+--------------------------------------------------------------------------------------------
 
 CREATE SCHEMA IF NOT EXISTS bank_db_stg;
 
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS bank_db_stg.transactions AS (
     AND status = 'Completed'
 );
 
----------
+-------------------------------------------------------------------
 
 CREATE SCHEMA IF NOT EXISTS bank_db_dwh;
 
@@ -159,16 +159,7 @@ CREATE TABLE IF NOT EXISTS bank_db_dwh.Dim_Date AS (
     UNNEST(GENERATE_DATE_ARRAY('2020-01-01', '2030-12-31', INTERVAL 1 DAY)) AS d
 );
 
-CREATE TABLE IF NOT EXISTS bank_db_dwh.Dim_Customer AS (
-  SELECT
-    GENERATE_UUID() AS customer_key,
-    customer_id,
-    full_name,
-    city,
-    segment
-  FROM
-    bank_db_stg.customers
-);
+---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS bank_db_dwh.Dim_Account AS (
   SELECT
@@ -182,8 +173,57 @@ CREATE TABLE IF NOT EXISTS bank_db_dwh.Dim_Account AS (
     bank_db_stg.accounts
 );
 
+CREATE TABLE bank_db_dwh.Dim_Customer (
+  customer_key   STRING NOT NULL,
+  customer_id    INT64 NOT NULL,
+  full_name      STRING,
+  city           STRING,
+  segment        STRING,
+  
+  valid_from     TIMESTAMP,
+  valid_to       TIMESTAMP,
+  is_active      BOOL
+);
 
-----------
+INSERT INTO bank_db_dwh.Dim_Customer (
+  customer_key, customer_id, full_name, city, segment,
+  valid_from, valid_to, is_active
+)
+SELECT
+  GENERATE_UUID() AS customer_key,
+  customer_id,
+  full_name,
+  city,
+  segment,
+  CURRENT_TIMESTAMP() AS valid_from,
+  TIMESTAMP('9999-12-31 23:59:59') AS valid_to,
+  TRUE AS is_active
+FROM
+  bank_db_stg.customers;
+
+UPDATE bank_db_dwh.Dim_Customer
+SET
+  is_active = FALSE,
+  valid_to = CURRENT_TIMESTAMP()
+WHERE
+  customer_id = 1001 AND is_active = TRUE;
+
+INSERT INTO bank_db_dwh.Dim_Customer (
+  customer_key, customer_id, full_name, city, segment,
+  valid_from, valid_to, is_active
+)
+VALUES (
+  GENERATE_UUID(),
+  1001,
+  'Ivan Petrenko',
+  'Lviv',
+  'Retail',
+  CURRENT_TIMESTAMP(),
+  TIMESTAMP('9999-12-31 23:59:59'),
+  TRUE
+);
+
+--------------------------------------------------------------------------------
 
 CREATE SCHEMA bank_db_ftc;
 
@@ -214,7 +254,7 @@ CREATE TABLE IF NOT EXISTS bank_db_ftc.fact_bank_summary AS (
   LEFT JOIN
     bank_db_dwh.Dim_Account AS da ON st.account_number = da.account_number
   LEFT JOIN
-    bank_db_dwh.Dim_Customer AS dc ON da.customer_id = dc.customer_id
+    bank_db_dwh.Dim_Customer AS dc ON da.customer_id = dc.customer_id AND dc.is_active = TRUE
   LEFT JOIN
     bank_db_dwh.Dim_Date AS dd 
       ON CAST(FORMAT_DATE('%Y%m%d', DATE(st.txn_timestamp)) AS INT64) = dd.date_key
