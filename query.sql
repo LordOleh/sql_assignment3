@@ -7,7 +7,8 @@ SELECT
 FROM
   bank_db_ftc.fact_bank_summary AS f
 LEFT JOIN
-  bank_db_dwh.Dim_Customer AS c ON f.customer_key = c.customer_key
+  bank_db_dwh.Dim_Customer AS c ON f.customer_key = c.customer_key 
+  AND c.is_active = TRUE 
 LEFT JOIN
   bank_db_dwh.Dim_Date AS d ON f.date_key = d.date_key
 WHERE
